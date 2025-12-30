@@ -1,199 +1,258 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions, Image, ScrollView, StyleSheet,
+    TextInput, TouchableOpacity, View
+} from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+// --- KẾT NỐI FIREBASE ---
+import { addDoc, collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { auth, db } from '../constants/firebaseConfig';
+// ------------------------
+
+import { ThemedText } from '../components/themed-text';
+import { ThemedView } from '../components/themed-view';
+import { useColorScheme } from '../hooks/use-color-scheme';
+
+const { width } = Dimensions.get('window');
 
 export default function DashboardScreen() {
     const router = useRouter();
     const colorScheme = useColorScheme();
+    const [userProfile, setUserProfile] = useState<any>(null);
 
+    // State lưu danh sách sản phẩm thật lấy từ Firebase
+    const [products, setProducts] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const bgInput = colorScheme === 'dark' ? '#2C2C2C' : '#F5F5F5';
     const cardBg = colorScheme === 'dark' ? '#1E1E1E' : '#FFFFFF';
-    const iconBg = colorScheme === 'dark' ? '#2C2C2C' : '#F5F5F5';
+    const textColor = colorScheme === 'dark' ? '#FFFFFF' : '#000000';
 
-    const recentOrders = [
-        { id: 'DH001', customer: 'Nguyễn Văn A', total: '1.250.000đ', status: 'Success', time: '10:30' },
-        { id: 'DH002', customer: 'Trần Thị B', total: '560.000đ', status: 'Pending', time: '09:15' },
-        { id: 'DH003', customer: 'Lê Văn C', total: '2.100.000đ', status: 'Success', time: '08:45' },
-    ];
+    const categories = ['Tất cả', 'Laptop', 'Du lịch', 'Thời trang', 'Đi học'];
 
-    // Hàm đăng xuất
+    // --- HÀM 1: LẤY SẢN PHẨM TỪ FIREBASE VỀ ---
+    const fetchProducts = async () => {
+        try {
+            const querySnapshot = await getDocs(collection(db, "products"));
+            const productsList: any[] = [];
+            querySnapshot.forEach((doc) => {
+                productsList.push({ id: doc.id, ...doc.data() });
+            });
+            setProducts(productsList);
+        } catch (error) {
+            console.error("Lỗi lấy sản phẩm:", error);
+        }
+    };
+
+    // --- HÀM 2: NẠP SẢN PHẨM MẪU (Dùng Link ảnh có sẵn) ---
+    // Đây là công cụ Admin để bạn nạp hàng nhanh
+    const seedProductsWithLinks = async () => {
+        const sampleProducts = [
+            { name: 'Balo Laptop Chống Nước', price: 550000, rating: 4.8, category: 'Laptop', image: 'https://cdn-icons-png.flaticon.com/512/2852/2852506.png' },
+            { name: 'Balo Du Lịch Phượt', price: 890000, rating: 5.0, category: 'Du lịch', image: 'https://cdn-icons-png.flaticon.com/512/2954/2954886.png' },
+            { name: 'Balo Học Sinh Cute', price: 320000, rating: 4.5, category: 'Đi học', image: 'https://cdn-icons-png.flaticon.com/512/2852/2852506.png' },
+            { name: 'Túi Đeo Chéo Sport', price: 150000, rating: 4.2, category: 'Thời trang', image: 'https://cdn-icons-png.flaticon.com/512/11549/11549742.png' },
+            { name: 'Vali Kéo Du Lịch', price: 1200000, rating: 4.9, category: 'Du lịch', image: 'https://cdn-icons-png.flaticon.com/512/2954/2954911.png' },
+            { name: 'Balo Gaming RGB', price: 2100000, rating: 5.0, category: 'Laptop', image: 'https://cdn-icons-png.flaticon.com/512/10608/10608298.png' },
+        ];
+
+        try {
+            Alert.alert("Đang nạp dữ liệu", "Đang thêm sản phẩm vào Firebase...");
+            const productsRef = collection(db, 'products');
+
+            for (const product of sampleProducts) {
+                await addDoc(productsRef, {
+                    ...product,
+                    createdAt: new Date().toISOString()
+                });
+            }
+            Alert.alert("Thành công", "Đã thêm 6 sản phẩm mẫu! App sẽ tự tải lại.");
+            fetchProducts(); // Tải lại danh sách ngay lập tức
+        } catch (error) {
+            console.error("Lỗi:", error);
+        }
+    };
+
+    // --- HÀM 3: LẤY THÔNG TIN USER ---
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                // Lấy User
+                const currentUser = auth.currentUser;
+                if (currentUser) {
+                    const docSnap = await getDoc(doc(db, "users", currentUser.uid));
+                    if (docSnap.exists()) setUserProfile(docSnap.data());
+                }
+                // Lấy Sản phẩm luôn
+                await fetchProducts();
+            } catch (error) {
+                console.error(error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
+    const formatCurrency = (amount: number) => {
+        return amount.toLocaleString('vi-VN', { style: 'currency', currency: 'VND' });
+    };
+
     const handleLogout = () => {
-        router.replace('/'); // Quay về trang Landing Page
+        auth.signOut().then(() => router.replace('/'));
     };
 
     return (
         <ThemedView style={styles.container}>
-            {/* HEADER */}
-            <View style={styles.header}>
-                <View>
-                    <ThemedText style={styles.greeting}>Xin chào, Admin 👋</ThemedText>
-                    <ThemedText type="subtitle" style={styles.shopName}>Cửa hàng QLBanHang</ThemedText>
+            {/* 1. HEADER */}
+            <View style={[styles.headerContainer, { backgroundColor: cardBg }]}>
+                <View style={styles.topRow}>
+                    <View>
+                        <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Chào bạn,</ThemedText>
+                        <ThemedText type="subtitle" style={{ color: '#0a7ea4' }}>
+                            {userProfile?.fullName || 'Khách hàng'}
+                        </ThemedText>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 15 }}>
+
+                        {/* --- NÚT NẠP DỮ LIỆU (ẨN - Chỉ dùng để nạp hàng lúc đầu) --- */}
+                        <TouchableOpacity onPress={seedProductsWithLinks}>
+                            <Ionicons name="cloud-download-outline" size={24} color="#FF6B00" />
+                        </TouchableOpacity>
+                        {/* -------------------------------------------------------- */}
+
+                        <TouchableOpacity onPress={handleLogout}>
+                            <Ionicons name="log-out-outline" size={24} color={textColor} />
+                        </TouchableOpacity>
+                        <TouchableOpacity>
+                            <Ionicons name="cart-outline" size={24} color={textColor} />
+                            <View style={styles.badge}><ThemedText style={styles.badgeText}>0</ThemedText></View>
+                        </TouchableOpacity>
+                    </View>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <TouchableOpacity style={[styles.notificationBtn, { backgroundColor: iconBg }]}>
-                        <Ionicons name="notifications-outline" size={24} color="#0a7ea4" />
-                        <View style={styles.badge} />
-                    </TouchableOpacity>
-                    {/* Nút đăng xuất */}
-                    <TouchableOpacity onPress={handleLogout} style={[styles.notificationBtn, { backgroundColor: '#FFEBEE' }]}>
-                        <Ionicons name="log-out-outline" size={24} color="#D32F2F" />
-                    </TouchableOpacity>
+
+                {/* Thanh tìm kiếm */}
+                <View style={[styles.searchBar, { backgroundColor: bgInput }]}>
+                    <Ionicons name="search" size={20} color="#888" />
+                    <TextInput
+                        placeholder="Tìm kiếm balo, túi xách..."
+                        placeholderTextColor="#888"
+                        style={[styles.searchInput, { color: textColor }]}
+                    />
                 </View>
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-                {/* STATISTICS CARDS */}
-                <View style={styles.statsContainer}>
-                    <View style={[styles.statCard, { backgroundColor: '#0a7ea4' }]}>
-                        <View style={styles.statIconBox}>
-                            <Ionicons name="wallet" size={20} color="#0a7ea4" />
+                {/* 2. BANNER */}
+                <View style={styles.bannerContainer}>
+                    <View style={styles.banner}>
+                        <View style={styles.bannerTextContainer}>
+                            <ThemedText style={styles.bannerTitle}>SALE 50%</ThemedText>
+                            <ThemedText style={styles.bannerSubtitle}>Mùa tựu trường</ThemedText>
+                            <TouchableOpacity style={styles.bannerBtn}>
+                                <ThemedText style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>Xem ngay</ThemedText>
+                            </TouchableOpacity>
                         </View>
-                        <View>
-                            <ThemedText style={styles.statLabelLight}>Doanh thu ngày</ThemedText>
-                            <ThemedText style={styles.statValueLight}>5.2Tr</ThemedText>
-                        </View>
-                    </View>
-
-                    <View style={[styles.statCard, { backgroundColor: cardBg }]}>
-                        <View style={[styles.statIconBox, { backgroundColor: '#FFF0E6' }]}>
-                            <Ionicons name="cart" size={20} color="#FF6B00" />
-                        </View>
-                        <View>
-                            <ThemedText style={styles.statLabel}>Đơn hàng</ThemedText>
-                            <ThemedText style={styles.statValue}>12</ThemedText>
-                        </View>
-                    </View>
-
-                    <View style={[styles.statCard, { backgroundColor: cardBg }]}>
-                        <View style={[styles.statIconBox, { backgroundColor: '#FFEEEE' }]}>
-                            <Ionicons name="alert-circle" size={20} color="#FF3B30" />
-                        </View>
-                        <View>
-                            <ThemedText style={styles.statLabel}>Sắp hết</ThemedText>
-                            <ThemedText style={styles.statValue}>5</ThemedText>
-                        </View>
+                        <Image
+                            source={{ uri: 'https://cdn-icons-png.flaticon.com/512/2954/2954886.png' }}
+                            style={styles.bannerImage}
+                            resizeMode="contain"
+                        />
                     </View>
                 </View>
 
-                {/* QUICK ACTIONS */}
-                <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Chức năng nhanh</ThemedText>
-                <View style={styles.menuGrid}>
-                    <MenuButton title="Tạo đơn" icon="add-circle" color="#0a7ea4" bg={cardBg} onPress={() => { }} />
-                    <MenuButton title="Sản phẩm" icon="cube" color="#FF6B00" bg={cardBg} onPress={() => { }} />
-                    <MenuButton title="Khách hàng" icon="people" color="#34C759" bg={cardBg} onPress={() => { }} />
-                    <MenuButton title="Báo cáo" icon="bar-chart" color="#5856D6" bg={cardBg} onPress={() => { }} />
-                    <MenuButton title="Kho hàng" icon="layers" color="#FF9500" bg={cardBg} onPress={() => { }} />
-                    <MenuButton title="Cài đặt" icon="settings" color="#8E8E93" bg={cardBg} onPress={() => { }} />
-                </View>
-
-                {/* RECENT ORDERS */}
-                <View style={styles.recentHeader}>
-                    <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Giao dịch gần đây</ThemedText>
-                    <TouchableOpacity>
-                        <ThemedText style={{ color: '#0a7ea4' }}>Xem tất cả</ThemedText>
-                    </TouchableOpacity>
-                </View>
-
-                <View style={styles.listContainer}>
-                    {recentOrders.map((item) => (
-                        <View key={item.id} style={[styles.orderItem, { backgroundColor: cardBg }]}>
-                            <View style={styles.orderLeft}>
-                                <View style={[styles.orderIcon, { backgroundColor: item.status === 'Success' ? '#E8F5E9' : '#FFF3E0' }]}>
-                                    <Ionicons
-                                        name={item.status === 'Success' ? "checkmark-circle" : "time"}
-                                        size={20}
-                                        color={item.status === 'Success' ? "#2E7D32" : "#EF6C00"}
-                                    />
-                                </View>
-                                <View>
-                                    <ThemedText type="defaultSemiBold">{item.customer}</ThemedText>
-                                    <ThemedText style={styles.orderId}>{item.id} • {item.time}</ThemedText>
-                                </View>
-                            </View>
-                            <ThemedText type="defaultSemiBold" style={{ color: item.status === 'Success' ? '#2E7D32' : '#EF6C00' }}>
-                                {item.total}
-                            </ThemedText>
-                        </View>
+                {/* 3. DANH MỤC */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryList}>
+                    {categories.map((cat, index) => (
+                        <TouchableOpacity key={index} style={[styles.categoryPill, index === 0 && styles.activeCategory]}>
+                            <ThemedText style={[styles.categoryText, index === 0 && { color: '#fff' }]}>{cat}</ThemedText>
+                        </TouchableOpacity>
                     ))}
+                </ScrollView>
+
+                {/* 4. DANH SÁCH SẢN PHẨM (Lấy từ Firebase) */}
+                <View style={styles.sectionHeader}>
+                    <ThemedText type="subtitle">Sản phẩm mới về</ThemedText>
                 </View>
-                <View style={{ height: 20 }} />
+
+                {/* Kiểm tra loading */}
+                {loading ? (
+                    <ActivityIndicator size="large" color="#0a7ea4" style={{ marginTop: 20 }} />
+                ) : (
+                    <View style={styles.productGrid}>
+                        {products.length === 0 ? (
+                            <ThemedText style={{ textAlign: 'center', width: '100%', marginTop: 20, color: '#888' }}>
+                                Chưa có sản phẩm nào. Bấm vào đám mây màu cam để nạp dữ liệu!
+                            </ThemedText>
+                        ) : (
+                            products.map((item) => (
+                                <TouchableOpacity key={item.id} style={[styles.productCard, { backgroundColor: cardBg }]}>
+                                    <Image source={{ uri: item.image }} style={styles.productImage} resizeMode="contain" />
+                                    <View style={styles.productInfo}>
+                                        <ThemedText numberOfLines={1} style={styles.productName}>{item.name}</ThemedText>
+                                        <View style={styles.ratingRow}>
+                                            <Ionicons name="star" size={12} color="#FFD700" />
+                                            <ThemedText style={styles.ratingText}>{item.rating}</ThemedText>
+                                        </View>
+                                        <View style={styles.priceRow}>
+                                            <ThemedText style={styles.priceText}>{formatCurrency(item.price)}</ThemedText>
+                                            <TouchableOpacity style={styles.addBtn}>
+                                                <Ionicons name="add" size={16} color="#fff" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </TouchableOpacity>
+                            ))
+                        )}
+                    </View>
+                )}
+
+                <View style={{ height: 40 }} />
             </ScrollView>
         </ThemedView>
     );
 }
 
-const MenuButton = ({ title, icon, color, bg, onPress }: any) => (
-    <TouchableOpacity style={[styles.menuBtn, { backgroundColor: bg }]} onPress={onPress}>
-        <View style={[styles.menuIconContainer, { backgroundColor: color + '15' }]}>
-            <Ionicons name={icon} size={28} color={color} />
-        </View>
-        <ThemedText style={styles.menuText}>{title}</ThemedText>
-    </TouchableOpacity>
-);
-
 const styles = StyleSheet.create({
     container: { flex: 1 },
+    headerContainer: { padding: 20, paddingTop: 50, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
+    topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+    badge: { position: 'absolute', top: -5, right: -5, backgroundColor: 'red', borderRadius: 10, width: 16, height: 16, justifyContent: 'center', alignItems: 'center' },
+    badgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+    searchBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, height: 45, borderRadius: 12 },
+    searchInput: { flex: 1, marginLeft: 10 },
     scrollContent: { padding: 20 },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingTop: 60,
-        marginBottom: 20,
-    },
-    greeting: { fontSize: 14, opacity: 0.6 },
-    shopName: { fontSize: 20, fontWeight: 'bold' },
-    notificationBtn: {
-        width: 45, height: 45, borderRadius: 25,
-        justifyContent: 'center', alignItems: 'center',
-    },
-    badge: {
-        position: 'absolute', top: 10, right: 12, width: 8, height: 8,
-        borderRadius: 4, backgroundColor: 'red', borderWidth: 1, borderColor: '#fff',
-    },
-    statsContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30, gap: 10 },
-    statCard: {
-        flex: 1, borderRadius: 16, padding: 12,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-        justifyContent: 'space-between', height: 100,
-    },
-    statIconBox: {
-        width: 32, height: 32, borderRadius: 10, backgroundColor: '#fff',
-        justifyContent: 'center', alignItems: 'center', marginBottom: 8,
-    },
-    statLabel: { fontSize: 12, opacity: 0.6 },
-    statValue: { fontSize: 18, fontWeight: 'bold' },
-    statLabelLight: { fontSize: 12, color: 'rgba(255,255,255,0.8)' },
-    statValueLight: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-    sectionTitle: { marginBottom: 15, fontSize: 18 },
-    menuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, marginBottom: 30 },
-    menuBtn: {
-        width: '31%', aspectRatio: 1, borderRadius: 16,
-        justifyContent: 'center', alignItems: 'center',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-    },
-    menuIconContainer: {
-        width: 50, height: 50, borderRadius: 25,
-        justifyContent: 'center', alignItems: 'center', marginBottom: 8,
-    },
-    menuText: { fontSize: 12, fontWeight: '500' },
-    recentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-    listContainer: { gap: 10 },
-    orderItem: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        padding: 15, borderRadius: 16,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05, shadowRadius: 2, elevation: 1,
-    },
-    orderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    orderIcon: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-    orderId: { fontSize: 12, opacity: 0.5 },
+
+    // Banner
+    bannerContainer: { marginBottom: 20 },
+    banner: { backgroundColor: '#E3F2FD', borderRadius: 20, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 150 },
+    bannerTextContainer: { flex: 1 },
+    bannerTitle: { fontSize: 24, fontWeight: '900', color: '#0a7ea4' },
+    bannerSubtitle: { fontSize: 14, color: '#555', marginBottom: 10 },
+    bannerBtn: { backgroundColor: '#0a7ea4', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, alignSelf: 'flex-start' },
+    bannerImage: { width: 120, height: 120 },
+
+    // Categories
+    categoryList: { marginBottom: 20 },
+    categoryPill: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f0f0f0', marginRight: 10 },
+    activeCategory: { backgroundColor: '#0a7ea4' },
+    categoryText: { fontWeight: '600', fontSize: 13 },
+
+    // Products
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+    productGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 15 },
+    productCard: { width: (width - 55) / 2, borderRadius: 15, padding: 10, elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5 },
+    productImage: { width: '100%', height: 100, marginBottom: 10 },
+    productInfo: { gap: 4 },
+    productName: { fontSize: 13, fontWeight: '600' },
+    ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    ratingText: { fontSize: 10, opacity: 0.6 },
+    priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
+    priceText: { fontSize: 14, fontWeight: 'bold', color: '#0a7ea4' },
+    addBtn: { backgroundColor: '#0a7ea4', width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }
 });
