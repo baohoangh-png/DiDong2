@@ -5,12 +5,12 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
     ActivityIndicator,
-    Dimensions,
     FlatList,
     Image,
     StyleSheet,
     Text,
     TouchableOpacity,
+    useWindowDimensions,
     View
 } from 'react-native';
 
@@ -18,10 +18,7 @@ import {
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../constants/firebaseConfig';
 
-const { width } = Dimensions.get('window');
-
-// 1. DANH SÁCH DANH MỤC CỐ ĐỊNH (Bạn có thể sửa lại theo ý muốn)
-// Lưu ý: 'id' phải trùng với trường 'category' bạn đã lưu trong Firebase (Tech, Travel, Laptop...)
+// 1. DANH SÁCH DANH MỤC (Giữ nguyên)
 const CATEGORIES = [
     { id: 'Travel', name: 'Du Lịch & Phượt', icon: 'airplane-outline', color: '#ff9f43' },
     { id: 'Laptop', name: 'Laptop & Công Sở', icon: 'briefcase-outline', color: '#00d2ff' },
@@ -34,16 +31,23 @@ const CATEGORIES = [
 export default function ExploreScreen() {
     const router = useRouter();
 
-    // State quản lý
-    const [selectedCategory, setSelectedCategory] = useState<any>(null); // Danh mục đang chọn
-    const [products, setProducts] = useState<any[]>([]); // List sản phẩm của danh mục đó
+    // --- RESPONSIVE FIX ---
+    const { width } = useWindowDimensions();
+    // Nếu màn hình quá to (Web), chỉ lấy tối đa 500px để hiển thị như điện thoại
+    const MAX_WIDTH = 500;
+    const contentWidth = Math.min(width, MAX_WIDTH);
+    // Tính toán kích thước thẻ dựa trên chiều rộng đã giới hạn
+    const CARD_WIDTH = (contentWidth - 45) / 2;
+    // ----------------------
+
+    const [selectedCategory, setSelectedCategory] = useState<any>(null);
+    const [products, setProducts] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
 
-    // --- HÀM LẤY SẢN PHẨM THEO DANH MỤC ---
+    // --- HÀM LẤY SẢN PHẨM ---
     const fetchProductsByCategory = async (catId: string) => {
         setLoading(true);
         try {
-            // Query tìm sản phẩm có category == catId
             const q = query(collection(db, "products"), where("category", "==", catId));
             const querySnapshot = await getDocs(q);
 
@@ -59,13 +63,11 @@ export default function ExploreScreen() {
         }
     };
 
-    // Khi bấm chọn danh mục
     const handleSelectCategory = (category: any) => {
         setSelectedCategory(category);
         fetchProductsByCategory(category.id);
     };
 
-    // Quay lại danh sách danh mục
     const handleBack = () => {
         setSelectedCategory(null);
         setProducts([]);
@@ -73,17 +75,19 @@ export default function ExploreScreen() {
 
     const formatCurrency = (num: number) => num.toLocaleString('vi-VN', { style: 'currency', currency: 'VND' });
 
-    // --- GIAO DIỆN 1: LƯỚI DANH MỤC (HIỆN KHI CHƯA CHỌN GÌ) ---
+    // --- GIAO DIỆN 1: LƯỚI DANH MỤC ---
     const renderCategoryGrid = () => (
         <FlatList
             data={CATEGORIES}
             keyExtractor={(item) => item.id}
             numColumns={2}
+            // Áp dụng giới hạn chiều rộng và căn giữa
+            style={{ width: contentWidth, alignSelf: 'center' }}
             contentContainerStyle={{ padding: 15, paddingBottom: 100 }}
             columnWrapperStyle={{ justifyContent: 'space-between' }}
             renderItem={({ item }) => (
                 <TouchableOpacity
-                    style={styles.catCardContainer}
+                    style={[styles.catCardContainer, { width: CARD_WIDTH }]} // Width động
                     onPress={() => handleSelectCategory(item)}
                     activeOpacity={0.8}
                 >
@@ -99,10 +103,9 @@ export default function ExploreScreen() {
         />
     );
 
-    // --- GIAO DIỆN 2: DANH SÁCH SẢN PHẨM (HIỆN KHI ĐÃ CHỌN) ---
+    // --- GIAO DIỆN 2: DANH SÁCH SẢN PHẨM ---
     const renderProductList = () => (
-        <View style={{ flex: 1 }}>
-            {/* Header nhỏ để quay lại */}
+        <View style={{ flex: 1, width: contentWidth, alignSelf: 'center' }}>
             <View style={styles.subHeader}>
                 <TouchableOpacity onPress={handleBack} style={styles.smallBackBtn}>
                     <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -126,7 +129,7 @@ export default function ExploreScreen() {
                     contentContainerStyle={{ padding: 15, paddingBottom: 100 }}
                     columnWrapperStyle={{ justifyContent: 'space-between' }}
                     renderItem={({ item }) => (
-                        <BlurView intensity={20} tint="dark" style={styles.prodCard}>
+                        <BlurView intensity={20} tint="dark" style={[styles.prodCard, { width: CARD_WIDTH }]}>
                             <TouchableOpacity
                                 style={{ flex: 1, alignItems: 'center' }}
                                 onPress={() => router.push(`/product/${item.id}` as any)}
@@ -152,13 +155,12 @@ export default function ExploreScreen() {
 
             {/* Header Chính */}
             {!selectedCategory && (
-                <View style={styles.header}>
+                <View style={[styles.header, { width: contentWidth, alignSelf: 'center' }]}>
                     <Text style={styles.headerTitle}>Danh Mục</Text>
                     <Text style={styles.headerSub}>Tìm kiếm phong cách của bạn</Text>
                 </View>
             )}
 
-            {/* Logic chuyển đổi giao diện */}
             {selectedCategory ? renderProductList() : renderCategoryGrid()}
 
         </View>
@@ -172,19 +174,19 @@ const styles = StyleSheet.create({
         shadowColor: "#fff", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20
     },
 
-    // Header Chính
+    // Header
     header: { paddingTop: 60, paddingHorizontal: 20, marginBottom: 10 },
     headerTitle: { fontSize: 32, fontWeight: '900', color: '#fff', letterSpacing: 1 },
     headerSub: { fontSize: 14, color: 'rgba(255,255,255,0.6)', marginTop: 5 },
 
-    // Card Danh Mục
-    catCardContainer: { width: (width - 45) / 2, height: 160, marginBottom: 15, borderRadius: 20, overflow: 'hidden' },
+    // Card Danh Mục (Style cơ bản, width sẽ đè lên bằng inline style)
+    catCardContainer: { height: 160, marginBottom: 15, borderRadius: 20, overflow: 'hidden' },
     catCardGlass: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 15, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
     iconCircle: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', marginBottom: 15, borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
     catName: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
     catSub: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
 
-    // Giao diện Sub (Product List)
+    // Giao diện Sub
     subHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 50, paddingHorizontal: 20, marginBottom: 10 },
     smallBackBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
     subHeaderTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
@@ -192,8 +194,7 @@ const styles = StyleSheet.create({
     emptyView: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50 },
     emptyText: { color: 'rgba(255,255,255,0.5)', marginTop: 15 },
 
-    // Card Sản phẩm nhỏ
-    prodCard: { width: (width - 45) / 2, padding: 15, borderRadius: 20, marginBottom: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.05)', overflow: 'hidden' },
+    prodCard: { padding: 15, borderRadius: 20, marginBottom: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.05)', overflow: 'hidden' },
     prodImage: { width: '100%', height: 100, marginBottom: 10 },
     prodName: { color: '#fff', fontSize: 14, fontWeight: 'bold', marginBottom: 5 },
     prodPrice: { color: '#00ff87', fontSize: 14, fontWeight: 'bold' }
