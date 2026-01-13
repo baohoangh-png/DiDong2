@@ -31,7 +31,7 @@ export default function ProfileScreen() {
             setUser({
                 name: currUser.displayName || 'Khách hàng thân thiết',
                 email: currUser.email,
-                avatar: currUser.photoURL || 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png' // Avatar mặc định
+                avatar: currUser.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png' // Avatar mặc định
             });
         }
     }, []);
@@ -42,8 +42,12 @@ export default function ProfileScreen() {
             {
                 text: "Đồng ý",
                 onPress: async () => {
-                    await signOut(auth);
-                    router.replace('/auth');
+                    try {
+                        await signOut(auth);
+                        router.replace('/auth');
+                    } catch (error) {
+                        console.error(error);
+                    }
                 }
             }
         ]);

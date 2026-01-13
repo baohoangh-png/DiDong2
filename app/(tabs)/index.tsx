@@ -3,10 +3,9 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
-  Animated, // Import Animated
+  Animated,
   Easing,
   Image,
-  Modal,
   Platform,
   ScrollView, StyleSheet,
   Text,
@@ -19,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // --- FIREBASE ---
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../constants/firebaseConfig';
 
@@ -62,16 +61,15 @@ export default function DashboardScreen() {
   const [products, setProducts] = useState<any[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // --- ANIMATED VALUES ---
   const scrollX = useRef(new Animated.Value(0)).current;
 
-  // --- TOAST STATE (Thông báo nhỏ) ---
+  // --- TOAST STATE ---
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
-  const toastAnim = useRef(new Animated.Value(0)).current; // Opacity & TranslateY
+  const toastAnim = useRef(new Animated.Value(0)).current;
   // -----------------------------------
 
   const { items, addToCart } = useCart();
@@ -141,39 +139,41 @@ export default function DashboardScreen() {
     }
   };
 
-  const handleLogoutPress = () => setLogoutModalVisible(true);
-  const confirmLogout = async () => { try { await signOut(auth); setLogoutModalVisible(false); } catch (error) { console.error(error); } };
-
-  // --- HÀM HIỆN TOAST MESSAGE ---
   const showToast = (message: string) => {
     setToastMsg(message);
     setToastVisible(true);
-
-    // Reset animation về 0
     toastAnim.setValue(0);
-
-    // Chạy hiệu ứng Hiện (Fade In + Slide Up)
     Animated.timing(toastAnim, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-      easing: Easing.out(Easing.back(1.5))
+      toValue: 1, duration: 300, useNativeDriver: true, easing: Easing.out(Easing.back(1.5))
     }).start();
-
-    // Sau 2 giây thì Ẩn đi
     setTimeout(() => {
       Animated.timing(toastAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true
+        toValue: 0, duration: 300, useNativeDriver: true
       }).start(() => {
         setToastVisible(false);
       });
     }, 2000);
   };
 
-  // --- HÀM THÊM NHANH (Dùng Toast thay Alert) ---
+  // --- LOGIC THÊM NHANH (MỚI: CHECK ĐĂNG NHẬP) ---
   const handleQuickAdd = (item: any) => {
+    // 1. Nếu chưa đăng nhập -> Chặn lại & Hiện Alert
+    if (!currentUser) {
+      Alert.alert(
+        "Yêu cầu đăng nhập",
+        "Bạn cần đăng nhập để thêm sản phẩm vào giỏ hàng.",
+        [
+          { text: "Để sau", style: "cancel" },
+          {
+            text: "Đăng nhập ngay",
+            onPress: () => router.push('/auth') // Chuyển sang trang Login
+          }
+        ]
+      );
+      return;
+    }
+
+    // 2. Nếu đã đăng nhập -> Thêm bình thường
     addToCart(item);
     showToast(`Đã thêm "${item.name}" vào giỏ`);
   };
@@ -212,18 +212,17 @@ export default function DashboardScreen() {
             </TouchableOpacity>
             <TextGradient style={styles.greetingText}>Hello, {userProfile?.fullName || 'Khách hàng'}</TextGradient>
           </View>
-          <View style={{ flexDirection: 'row', gap: 12 }}>
+
+          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
             <GlassCard style={styles.iconButton}>
               <TouchableOpacity onPress={() => router.push('/cart' as any)}>
                 <Ionicons name="cart-outline" size={24} color="#fff" />
                 {items.length > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{items.length}</Text></View>}
               </TouchableOpacity>
             </GlassCard>
-            {currentUser ? (
-              <GlassCard style={styles.iconButton}>
-                <TouchableOpacity onPress={handleLogoutPress}><Ionicons name="log-out-outline" size={24} color="#ff006e" /></TouchableOpacity>
-              </GlassCard>
-            ) : (
+
+            {/* CHỈ HIỆN NÚT ĐĂNG NHẬP KHI CHƯA LOGIN (CLEAN UI) */}
+            {!currentUser && (
               <TouchableOpacity onPress={() => router.push('/auth')} style={styles.loginBtn}>
                 <Text style={styles.loginText}>Đăng nhập</Text>
               </TouchableOpacity>
@@ -231,13 +230,13 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* SEARCH */}
+        {/* SEARCH BAR (CLEAN) */}
         <GlassCard style={styles.searchContainer}>
           <Ionicons name="search" size={20} color="rgba(255,255,255,0.6)" />
           <TextInput placeholder="Tìm kiếm balo..." placeholderTextColor="rgba(255,255,255,0.4)" style={styles.searchInput} value={searchQuery} onChangeText={handleSearch} />
-          {searchQuery.length > 0 ? (
+          {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => handleSearch('')}><Ionicons name="close-circle" size={20} color="#ff006e" /></TouchableOpacity>
-          ) : <Ionicons name="mic-outline" size={20} color="#00ff87" />}
+          )}
         </GlassCard>
 
         {/* MAIN CONTENT */}
@@ -270,7 +269,6 @@ export default function DashboardScreen() {
               ))}
             </ScrollView>
 
-            {/* ANIMATED BANNER */}
             <View style={{ marginBottom: 25 }}>
               <TextGradient style={[styles.sectionTitle, { marginBottom: 15 }]}>Tin Nổi Bật</TextGradient>
               <Animated.ScrollView
@@ -310,9 +308,12 @@ export default function DashboardScreen() {
                       <TextGradient numberOfLines={1} style={styles.gridName}>{item.name}</TextGradient>
                       <View style={styles.priceRow}>
                         <TextGradient style={styles.gridPrice}>{formatCurrency(item.price)}</TextGradient>
+
+                        {/* NÚT THÊM NHANH (CÓ KIỂM TRA ĐĂNG NHẬP) */}
                         <TouchableOpacity onPress={() => handleQuickAdd(item)}>
                           <Ionicons name="add-circle" size={26} color="#00ff87" />
                         </TouchableOpacity>
+
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -324,25 +325,7 @@ export default function DashboardScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Logout Modal */}
-      <Modal animationType="fade" transparent={true} visible={logoutModalVisible} onRequestClose={() => setLogoutModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <LinearGradient colors={['#24243e', '#0f0c29']} style={StyleSheet.absoluteFill} />
-            <View style={styles.logoutIconCircle}><Ionicons name="log-out" size={35} color="#ff006e" style={{ marginLeft: 5 }} /></View>
-            <Text style={styles.modalTitle}>Đăng xuất?</Text>
-            <Text style={styles.modalText}>Bạn có chắc chắn muốn thoát tài khoản khỏi thiết bị này không?</Text>
-            <View style={styles.modalBtnRow}>
-              <TouchableOpacity style={styles.btnCancel} onPress={() => setLogoutModalVisible(false)}><Text style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 'bold' }}>Ở lại</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.btnLogout} onPress={confirmLogout}>
-                <LinearGradient colors={['#ff006e', '#ff4757']} style={styles.btnGradient}><Text style={{ color: '#fff', fontWeight: 'bold' }}>Đăng xuất</Text></LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* --- TOAST NOTIFICATION COMPONENT --- */}
+      {/* TOAST NOTIFICATION */}
       {toastVisible && (
         <Animated.View style={[
           styles.toastContainer,
@@ -375,6 +358,7 @@ const styles = StyleSheet.create({
   loginText: { color: '#000', fontWeight: 'bold', fontSize: 14 },
   logoText: { fontSize: 22, fontWeight: '900', letterSpacing: 2, color: '#00ff87' },
   greetingText: { fontSize: 14, opacity: 0.7, marginTop: 4 },
+
   glassContainer: { backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.2)', overflow: 'hidden' },
   glassFallback: { backgroundColor: 'rgba(20, 20, 30, 0.7)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   searchContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, height: 50, marginBottom: 25 },
@@ -405,26 +389,9 @@ const styles = StyleSheet.create({
   blob: { position: 'absolute', width: 200, height: 200, borderRadius: 100, opacity: 0.4, shadowColor: "#fff", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 20 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { width: '85%', padding: 30, borderRadius: 30, alignItems: 'center', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,0,110,0.3)' },
-  logoutIconCircle: { width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(255, 0, 110, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#ff006e' },
-  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 10 },
-  modalText: { fontSize: 15, color: 'rgba(255,255,255,0.7)', textAlign: 'center', lineHeight: 22, marginBottom: 25 },
-  modalBtnRow: { flexDirection: 'row', gap: 15, width: '100%' },
-  btnCancel: { flex: 1, padding: 15, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
-  btnLogout: { flex: 1, borderRadius: 15, overflow: 'hidden' },
-  btnGradient: { padding: 15, alignItems: 'center', width: '100%' },
 
   // --- TOAST STYLES ---
-  toastContainer: {
-    position: 'absolute', bottom: 100, alignSelf: 'center',
-    borderRadius: 25, overflow: 'hidden',
-    shadowColor: "#00ff87", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.3, shadowRadius: 10,
-    elevation: 10, zIndex: 999
-  },
-  toastGlass: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 12,
-    backgroundColor: 'rgba(20, 20, 30, 0.9)',
-    borderWidth: 1, borderColor: '#00ff87'
-  },
+  toastContainer: { position: 'absolute', bottom: 100, alignSelf: 'center', borderRadius: 25, overflow: 'hidden', shadowColor: "#00ff87", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10, zIndex: 999 },
+  toastGlass: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: 'rgba(20, 20, 30, 0.9)', borderWidth: 1, borderColor: '#00ff87' },
   toastText: { color: '#fff', fontWeight: 'bold', fontSize: 14 }
 });

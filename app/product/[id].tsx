@@ -1,10 +1,14 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'; // Thêm MaterialCommunityIcons
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert // Import thêm Alert
+    ,
+
+
     Dimensions,
     Image,
     Modal,
@@ -18,7 +22,7 @@ import {
 
 // --- FIREBASE ---
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../constants/firebaseConfig';
+import { auth, db } from '../../constants/firebaseConfig'; // Import thêm auth
 
 // --- GIỎ HÀNG ---
 import { useCart } from '../../contexts/CartContext';
@@ -31,6 +35,7 @@ export default function ProductDetailScreen() {
     const [product, setProduct] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [modalVisible, setModalVisible] = useState(false);
+
     const { addToCart } = useCart();
 
     useEffect(() => {
@@ -54,7 +59,25 @@ export default function ProductDetailScreen() {
         fetchProductDetail();
     }, [id]);
 
+    // --- XỬ LÝ THÊM VÀO GIỎ (CÓ CHECK ĐĂNG NHẬP) ---
     const handleAddToCart = () => {
+        // 1. Kiểm tra đăng nhập trước
+        if (!auth.currentUser) {
+            Alert.alert(
+                "Yêu cầu đăng nhập",
+                "Bạn cần đăng nhập để thêm sản phẩm này vào giỏ hàng.",
+                [
+                    { text: "Để sau", style: "cancel" },
+                    {
+                        text: "Đăng nhập ngay",
+                        onPress: () => router.push('/auth') // Chuyển sang trang Login
+                    }
+                ]
+            );
+            return;
+        }
+
+        // 2. Nếu đã đăng nhập thì xử lý bình thường
         if (!product) return;
         addToCart({ id: id as string, ...product });
         setModalVisible(true);
@@ -65,8 +88,7 @@ export default function ProductDetailScreen() {
         router.push('/cart' as any);
     };
 
-    // --- HÀM TẠO THÔNG SỐ GIẢ LẬP THEO DANH MỤC ---
-    // (Giúp hiển thị thông tin hợp lý mà không cần sửa DB ngay)
+    // --- HÀM TẠO THÔNG SỐ GIẢ LẬP ---
     const getProductSpecs = (category: string) => {
         const cat = category ? category.toLowerCase() : '';
         if (cat.includes('laptop') || cat.includes('gaming')) {
@@ -138,7 +160,7 @@ export default function ProductDetailScreen() {
                         {product?.price?.toLocaleString('vi-VN')} ₫
                     </Text>
 
-                    {/* --- THAY THẾ MÀU SẮC BẰNG THÔNG SỐ KỸ THUẬT --- */}
+                    {/* THÔNG SỐ KỸ THUẬT */}
                     <Text style={styles.sectionTitle}>Thông số kỹ thuật</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.specContainer}>
                         {specs.map((item, index) => (
@@ -153,7 +175,6 @@ export default function ProductDetailScreen() {
                             </View>
                         ))}
                     </ScrollView>
-                    {/* ----------------------------------------------- */}
 
                     <Text style={styles.sectionTitle}>Mô tả sản phẩm</Text>
                     <Text style={styles.descriptionText}>
@@ -176,7 +197,7 @@ export default function ProductDetailScreen() {
                 </View>
             </BlurView>
 
-            {/* MODAL */}
+            {/* MODAL THÀNH CÔNG */}
             <Modal animationType="fade" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -218,7 +239,6 @@ const styles = StyleSheet.create({
     sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 15, marginTop: 10 },
     descriptionText: { color: 'rgba(255,255,255,0.7)', lineHeight: 22, fontSize: 14 },
 
-    // --- STYLES MỚI CHO THÔNG SỐ KỸ THUẬT ---
     specContainer: { flexDirection: 'row', marginBottom: 20 },
     specCard: {
         flexDirection: 'row', alignItems: 'center',
@@ -232,7 +252,6 @@ const styles = StyleSheet.create({
     },
     specLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 10, marginBottom: 2 },
     specValue: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
-    // ----------------------------------------
 
     bottomAction: { position: 'absolute', bottom: 20, left: 20, right: 20, flexDirection: 'row', gap: 15, alignItems: 'center' },
     cartBtn: { flex: 1, borderRadius: 15, overflow: 'hidden', shadowColor: "#00ff87", shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
