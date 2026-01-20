@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-    Dimensions,
+    ActivityIndicator,
+    Alert,
     FlatList,
     StyleSheet,
     Text,
@@ -11,101 +13,179 @@ import {
     View
 } from 'react-native';
 
-const { width } = Dimensions.get('window');
-
-// 1. DỮ LIỆU GIẢ LẬP (MOCK DATA)
-// Sau này bạn có thể thay bằng dữ liệu lấy từ Firebase
-const INITIAL_NOTIFICATIONS = [
-    {
-        id: '1',
-        type: 'order',
-        title: 'Đặt hàng thành công 📦',
-        message: 'Đơn hàng #ORD-8821 của bạn đã được xác nhận và đang chờ đóng gói.',
-        time: '2 phút trước',
-        read: false
-    },
-    {
-        id: '2',
-        type: 'promo',
-        title: 'Săn Sale Giờ Vàng 🔥',
-        message: 'Nhập mã BHSTORE50 để được giảm ngay 50% cho Balo Laptop.',
-        time: '30 phút trước',
-        read: false
-    },
-    {
-        id: '3',
-        type: 'system',
-        title: 'Chào mừng đến BHSTORE',
-        message: 'Cảm ơn bạn đã cài đặt ứng dụng. Hãy khám phá bộ sưu tập mới nhất nhé!',
-        time: '1 ngày trước',
-        read: true
-    },
-    {
-        id: '4',
-        type: 'order',
-        title: 'Giao hàng thành công',
-        message: 'Đơn hàng #ORD-7712 đã được giao đến bạn. Hãy đánh giá 5 sao nhé!',
-        time: '3 ngày trước',
-        read: true
-    },
-];
+// --- FIREBASE ---
+import { addDoc, collection, doc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { auth, db } from '../../constants/firebaseConfig';
 
 export default function NotificationsScreen() {
-    const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+    const router = useRouter();
+    const [notifications, setNotifications] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    // Hàm chọn Icon theo loại thông báo
+    // Lắng nghe thông báo theo thời gian thực (Real-time)
+    useEffect(() => {
+        const user = auth.currentUser;
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+
+        // CÁCH SỬA LỖI XOAY MÃI:
+        // Chỉ dùng where, bỏ orderBy ở đây để tránh lỗi Missing Index của Firebase
+        const q = query(
+            collection(db, "notifications"),
+            where("userId", "==", user.uid)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const list: any[] = [];
+            snapshot.forEach((doc) => {
+                list.push({ id: doc.id, ...doc.data() });
+            });
+
+            // Tự sắp xếp ở phía Client (App) thay vì bắt Server làm
+            // Tin mới nhất (createdAt lớn nhất) sẽ lên đầu
+            list.sort((a, b) => {
+                const timeA = a.createdAt?.seconds || 0;
+                const timeB = b.createdAt?.seconds || 0;
+                return timeB - timeA;
+            });
+
+            setNotifications(list);
+            setLoading(false);
+        }, (error) => {
+            // Nếu có lỗi, in ra console và tắt loading để không bị treo
+            console.error("Lỗi lấy thông báo:", error);
+            Alert.alert("Lỗi", "Không thể tải thông báo: " + error.message);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+    // Hàm đánh dấu đã đọc khi bấm vào
+    const handleRead = async (item: any) => {
+        if (!item.isRead) {
+            try {
+                const notiRef = doc(db, "notifications", item.id);
+                await updateDoc(notiRef, { isRead: true });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        // Logic điều hướng
+        if (item.type === 'order') {
+            router.push('/order-history' as any);
+        }
+    };
+
+    // Hàm đánh dấu ĐÃ ĐỌC TẤT CẢ
+    const markAllAsRead = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        try {
+            const batch = writeBatch(db);
+            const unreadQuery = query(
+                collection(db, "notifications"),
+                where("userId", "==", user.uid),
+                where("isRead", "==", false)
+            );
+
+            const snapshot = await getDocs(unreadQuery);
+            snapshot.forEach((doc) => {
+                batch.update(doc.ref, { isRead: true });
+            });
+
+            await batch.commit();
+            Alert.alert("Thành công", "Đã đánh dấu tất cả là đã đọc.");
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    // Hàm tạo thông báo mẫu
+    const seedFakeNotis = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const fakeData = [
+            {
+                userId: user.uid,
+                title: 'Săn Sale Giờ Vàng 🔥',
+                message: 'Nhập mã BHSTORE50 để được giảm ngay 50% cho Balo Laptop.',
+                type: 'promo',
+                isRead: false,
+                createdAt: serverTimestamp()
+            },
+            {
+                userId: user.uid,
+                title: 'Chào mừng đến BHSTORE',
+                message: 'Cảm ơn bạn đã cài đặt ứng dụng. Hãy khám phá bộ sưu tập mới nhất nhé!',
+                type: 'system',
+                isRead: true,
+                createdAt: serverTimestamp()
+            }
+        ];
+
+        try {
+            for (const data of fakeData) {
+                await addDoc(collection(db, "notifications"), data);
+            }
+        } catch (e) {
+            Alert.alert("Lỗi", "Không tạo được thông báo mẫu.");
+        }
+    };
+
+    // Hàm tính thời gian tương đối
+    const getRelativeTime = (timestamp: any) => {
+        if (!timestamp) return 'Vừa xong';
+        const now = new Date();
+        const date = new Date(timestamp.seconds * 1000);
+        const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+        if (diff < 60) return 'Vừa xong';
+        if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+        return `${Math.floor(diff / 86400)} ngày trước`;
+    };
+
     const getIcon = (type: string) => {
         switch (type) {
             case 'order': return { name: 'cube-outline', color: '#00d2ff' };
             case 'promo': return { name: 'pricetag-outline', color: '#ff9f43' };
-            case 'system': return { name: 'notifications-outline', color: '#00ff87' };
-            default: return { name: 'information-circle-outline', color: '#fff' };
+            default: return { name: 'notifications-outline', color: '#00ff87' };
         }
-    };
-
-    // Hàm xóa tất cả thông báo
-    const handleClearAll = () => {
-        setNotifications([]);
-    };
-
-    // Hàm đánh dấu đã đọc (khi bấm vào)
-    const handleRead = (id: string) => {
-        setNotifications(prev => prev.map(item =>
-            item.id === id ? { ...item, read: true } : item
-        ));
     };
 
     return (
         <View style={styles.container}>
-            {/* Nền Gradient */}
             <LinearGradient colors={['#0f0c29', '#302b63', '#24243e']} style={StyleSheet.absoluteFill} />
 
-            {/* Trang trí Blob */}
-            <View style={[styles.blob, { top: 100, left: -50, backgroundColor: '#00ff87' }]} />
-            <View style={[styles.blob, { bottom: 200, right: -50, backgroundColor: '#ff006e' }]} />
-
-            {/* Header */}
+            {/* HEADER */}
             <View style={styles.header}>
-                <View>
-                    <Text style={styles.headerTitle}>Thông Báo</Text>
-                    <Text style={styles.headerSub}>Cập nhật mới nhất từ BHSTORE</Text>
-                </View>
-                {notifications.length > 0 && (
-                    <TouchableOpacity onPress={handleClearAll} style={styles.clearBtn}>
-                        <Ionicons name="checkmark-done-outline" size={20} color="rgba(255,255,255,0.7)" />
-                    </TouchableOpacity>
-                )}
+                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                    <Ionicons name="arrow-back" size={24} color="#fff" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Thông Báo</Text>
+                <TouchableOpacity onPress={markAllAsRead}>
+                    <Ionicons name="checkmark-done-circle-outline" size={26} color="#00ff87" />
+                </TouchableOpacity>
             </View>
 
-            {/* Danh sách thông báo */}
-            {notifications.length === 0 ? (
-                // Giao diện Trống (Empty State)
-                <View style={styles.emptyContainer}>
-                    <View style={styles.emptyIconCircle}>
-                        <Ionicons name="notifications-off-outline" size={50} color="rgba(255,255,255,0.3)" />
-                    </View>
-                    <Text style={styles.emptyText}>Hiện chưa có thông báo nào</Text>
-                    <Text style={styles.emptySubText}>Bạn sẽ nhận được tin tức khi có đơn hàng hoặc khuyến mãi mới.</Text>
+            {/* CONTENT */}
+            {loading ? (
+                <View style={styles.center}>
+                    <ActivityIndicator size="large" color="#00ff87" />
+                </View>
+            ) : notifications.length === 0 ? (
+                <View style={styles.center}>
+                    <Ionicons name="notifications-off-outline" size={80} color="rgba(255,255,255,0.2)" />
+                    <Text style={styles.emptyText}>Chưa có thông báo nào</Text>
+
+                    <TouchableOpacity style={styles.seedBtn} onPress={seedFakeNotis}>
+                        <Text style={{ color: '#000', fontWeight: 'bold' }}>Tạo thông báo mẫu</Text>
+                    </TouchableOpacity>
                 </View>
             ) : (
                 <FlatList
@@ -115,32 +195,22 @@ export default function NotificationsScreen() {
                     renderItem={({ item }) => {
                         const iconData = getIcon(item.type);
                         return (
-                            <TouchableOpacity
-                                activeOpacity={0.8}
-                                onPress={() => handleRead(item.id)}
-                                style={{ marginBottom: 15 }}
-                            >
-                                <BlurView intensity={30} tint="dark" style={[styles.notiCard, !item.read && styles.unreadBorder]}>
-                                    {/* Cột Icon */}
+                            <TouchableOpacity onPress={() => handleRead(item)}>
+                                <BlurView intensity={20} tint="dark" style={[styles.notiCard, !item.isRead && styles.unreadCard]}>
+                                    {/* Icon bên trái */}
                                     <View style={[styles.iconBox, { backgroundColor: iconData.color + '20' }]}>
                                         <Ionicons name={iconData.name as any} size={24} color={iconData.color} />
                                     </View>
 
-                                    {/* Cột Nội dung */}
-                                    <View style={{ flex: 1 }}>
-                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                                            <Text style={[styles.notiTitle, !item.read && { color: '#fff', fontWeight: 'bold' }]}>
-                                                {item.title}
-                                            </Text>
-                                            <Text style={styles.notiTime}>{item.time}</Text>
+                                    {/* Nội dung */}
+                                    <View style={{ flex: 1, marginRight: 10 }}>
+                                        <View style={styles.rowTitle}>
+                                            <Text style={[styles.notiTitle, !item.isRead && { color: '#fff', fontWeight: '900' }]}>{item.title}</Text>
+                                            {!item.isRead && <View style={styles.redDot} />}
                                         </View>
-                                        <Text style={styles.notiMsg} numberOfLines={2}>
-                                            {item.message}
-                                        </Text>
+                                        <Text style={styles.notiMessage} numberOfLines={2}>{item.message}</Text>
+                                        <Text style={styles.notiTime}>{getRelativeTime(item.createdAt)}</Text>
                                     </View>
-
-                                    {/* Dấu chấm đỏ chưa đọc */}
-                                    {!item.read && <View style={styles.dot} />}
                                 </BlurView>
                             </TouchableOpacity>
                         );
@@ -153,41 +223,22 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#000' },
-    blob: {
-        position: 'absolute', width: 250, height: 250, borderRadius: 125, opacity: 0.2,
-        shadowColor: "#fff", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20
-    },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 60, paddingHorizontal: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.3)' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+    backBtn: { padding: 5 },
+    emptyText: { color: 'rgba(255,255,255,0.5)', marginTop: 20 },
+    seedBtn: { marginTop: 20, backgroundColor: '#00ff87', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
 
-    // Header
-    header: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingTop: 60, paddingHorizontal: 20, marginBottom: 10
-    },
-    headerTitle: { fontSize: 30, fontWeight: '900', color: '#fff', letterSpacing: 1 },
-    headerSub: { fontSize: 13, color: 'rgba(255,255,255,0.6)', marginTop: 4 },
-    clearBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+    notiCard: { flexDirection: 'row', padding: 15, marginBottom: 15, borderRadius: 20, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.03)', borderLeftWidth: 3, borderLeftColor: 'transparent' },
+    unreadCard: { backgroundColor: 'rgba(255,255,255,0.08)', borderLeftColor: '#ff006e' },
 
-    // Card Thông báo
-    notiCard: {
-        flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 20,
-        overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.05)',
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)'
-    },
-    unreadBorder: { borderColor: 'rgba(0, 255, 135, 0.4)', backgroundColor: 'rgba(255,255,255,0.08)' },
+    iconBox: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
 
-    iconBox: { width: 50, height: 50, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+    rowTitle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
     notiTitle: { color: 'rgba(255,255,255,0.9)', fontSize: 16, fontWeight: '600', flex: 1 },
-    notiTime: { color: 'rgba(255,255,255,0.4)', fontSize: 11, marginLeft: 10 },
-    notiMsg: { color: 'rgba(255,255,255,0.6)', fontSize: 13, lineHeight: 18 },
-    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ff006e', position: 'absolute', top: 15, right: 15 },
+    redDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ff006e', marginLeft: 5 },
 
-    // Empty State
-    emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
-    emptyIconCircle: {
-        width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.05)',
-        justifyContent: 'center', alignItems: 'center', marginBottom: 20,
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)'
-    },
-    emptyText: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-    emptySubText: { color: 'rgba(255,255,255,0.5)', textAlign: 'center', lineHeight: 20 }
+    notiMessage: { color: 'rgba(255,255,255,0.6)', fontSize: 14, lineHeight: 20, marginBottom: 8 },
+    notiTime: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontStyle: 'italic' }
 });

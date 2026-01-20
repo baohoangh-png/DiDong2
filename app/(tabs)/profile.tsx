@@ -24,19 +24,19 @@ export default function ProfileScreen() {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
 
-    // Lấy thông tin User hiện tại
+    // Lắng nghe sự thay đổi user
     useEffect(() => {
         const currUser = auth.currentUser;
         if (currUser) {
             setUser({
                 name: currUser.displayName || 'Khách hàng thân thiết',
                 email: currUser.email,
-                avatar: currUser.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png' // Avatar mặc định
+                avatar: currUser.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'
             });
         }
-    }, []);
+    }, [user]);
 
-    const handleLogout = async () => {
+    const handleLogout = () => {
         Alert.alert("Đăng xuất", "Bạn có chắc muốn đăng xuất?", [
             { text: "Hủy", style: "cancel" },
             {
@@ -44,98 +44,104 @@ export default function ProfileScreen() {
                 onPress: async () => {
                     try {
                         await signOut(auth);
-                        router.replace('/auth');
                     } catch (error) {
-                        console.error(error);
+                        console.error("Lỗi đăng xuất Firebase:", error);
+                    } finally {
+                        if (router.canGoBack()) {
+                            router.dismissAll();
+                        }
+                        router.replace('/auth');
                     }
                 }
             }
         ]);
     };
 
+    const handleOpenHistory = (status: string | null = null) => {
+        router.push({
+            pathname: '/order-history',
+            params: { filter: status }
+        } as any);
+    };
+
+    // --- MENU ITEMS (ĐÃ XÓA TRUNG TÂM HỖ TRỢ) ---
     const menuItems = [
-        { icon: 'location-outline', title: 'Sổ địa chỉ', sub: 'Quản lý địa chỉ nhận hàng' },
-        { icon: 'card-outline', title: 'Phương thức thanh toán', sub: 'Visa, Momo, Apple Pay' },
-        { icon: 'ticket-outline', title: 'Kho Voucher', sub: 'Mã giảm giá của bạn' },
-        { icon: 'headset-outline', title: 'Trung tâm hỗ trợ', sub: 'Tư vấn 24/7' },
-        { icon: 'settings-outline', title: 'Cài đặt tài khoản', sub: 'Bảo mật, Ngôn ngữ' },
+        { icon: 'location-outline', title: 'Sổ địa chỉ', sub: 'Quản lý địa chỉ nhận hàng', route: '/address' },
+        { icon: 'settings-outline', title: 'Cài đặt tài khoản', sub: 'Bảo mật, Ngôn ngữ', route: '/settings' },
     ];
+
+    const handleMenuPress = (route: string | null) => {
+        if (route) {
+            router.push(route as any);
+        } else {
+            Alert.alert("Tính năng đang phát triển", "Chức năng này sẽ sớm ra mắt!");
+        }
+    };
 
     return (
         <View style={styles.container}>
-            {/* Nền Gradient */}
             <LinearGradient colors={['#0f0c29', '#302b63', '#24243e']} style={StyleSheet.absoluteFill} />
-
-            {/* Blob trang trí */}
             <View style={[styles.blob, { top: -50, right: -50, backgroundColor: '#00ff87' }]} />
             <View style={[styles.blob, { top: 300, left: -100, backgroundColor: '#ff006e' }]} />
 
             <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
 
-                {/* 1. HEADER USER INFO */}
+                {/* HEADER */}
                 <View style={styles.header}>
                     <View style={styles.avatarContainer}>
                         <Image source={{ uri: user?.avatar }} style={styles.avatar} />
-                        <View style={styles.editIcon}>
+                        <TouchableOpacity style={styles.editIcon} onPress={() => router.push('/edit-profile')}>
                             <Ionicons name="camera" size={14} color="#000" />
-                        </View>
+                        </TouchableOpacity>
                     </View>
                     <View style={{ marginLeft: 20, flex: 1 }}>
                         <Text style={styles.userName}>{user?.name}</Text>
                         <Text style={styles.userEmail}>{user?.email}</Text>
-                        <TouchableOpacity style={styles.editProfileBtn}>
+
+                        <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/edit-profile')}>
                             <Text style={styles.editProfileText}>Chỉnh sửa hồ sơ</Text>
                             <Ionicons name="chevron-forward" size={14} color="#00ff87" />
                         </TouchableOpacity>
                     </View>
                 </View>
 
-                {/* 2. ORDER DASHBOARD (QUAN TRỌNG) */}
+                {/* ORDER DASHBOARD */}
                 <BlurView intensity={30} tint="dark" style={styles.orderCard}>
                     <View style={styles.orderHeader}>
                         <Text style={styles.sectionTitle}>Đơn mua của tôi</Text>
-                        <TouchableOpacity onPress={() => alert('Xem lịch sử')}>
+                        <TouchableOpacity onPress={() => handleOpenHistory(null)}>
                             <Text style={styles.seeAll}>Xem lịch sử &gt;</Text>
                         </TouchableOpacity>
                     </View>
 
                     <View style={styles.statusRow}>
-                        <TouchableOpacity style={styles.statusItem}>
+                        <TouchableOpacity style={styles.statusItem} onPress={() => handleOpenHistory('pending')}>
                             <View style={styles.iconBox}>
                                 <MaterialCommunityIcons name="wallet-outline" size={24} color="#00ff87" />
-                                <View style={styles.badge}><Text style={styles.badgeText}>1</Text></View>
                             </View>
                             <Text style={styles.statusText}>Chờ xác nhận</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.statusItem}>
+                        <TouchableOpacity style={styles.statusItem} onPress={() => handleOpenHistory('processing')}>
                             <View style={styles.iconBox}>
                                 <MaterialCommunityIcons name="package-variant-closed" size={24} color="#00d2ff" />
                             </View>
                             <Text style={styles.statusText}>Chờ lấy hàng</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.statusItem}>
+                        <TouchableOpacity style={styles.statusItem} onPress={() => handleOpenHistory('shipping')}>
                             <View style={styles.iconBox}>
                                 <MaterialCommunityIcons name="truck-delivery-outline" size={24} color="#ff9f43" />
-                                <View style={styles.badge}><Text style={styles.badgeText}>2</Text></View>
                             </View>
                             <Text style={styles.statusText}>Đang giao</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.statusItem}>
-                            <View style={styles.iconBox}>
-                                <MaterialCommunityIcons name="star-circle-outline" size={24} color="#ff6b6b" />
-                            </View>
-                            <Text style={styles.statusText}>Đánh giá</Text>
                         </TouchableOpacity>
                     </View>
                 </BlurView>
 
-                {/* 3. MENU LIST */}
+                {/* MENU LIST */}
                 <View style={styles.menuContainer}>
                     {menuItems.map((item, index) => (
-                        <TouchableOpacity key={index} style={styles.menuItem}>
+                        <TouchableOpacity key={index} style={styles.menuItem} onPress={() => handleMenuPress(item.route)}>
                             <BlurView intensity={20} tint="dark" style={styles.menuItemGlass}>
                                 <View style={[styles.menuIconBox, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
                                     <Ionicons name={item.icon as any} size={22} color="#fff" />
@@ -150,13 +156,13 @@ export default function ProfileScreen() {
                     ))}
                 </View>
 
-                {/* 4. LOGOUT BUTTON */}
+                {/* LOGOUT */}
                 <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
                     <Ionicons name="log-out-outline" size={20} color="#ff006e" />
                     <Text style={styles.logoutText}>Đăng xuất</Text>
                 </TouchableOpacity>
 
-                <Text style={styles.versionText}>Phiên bản 1.0.0 (BHStore)</Text>
+                <Text style={styles.versionText}>Phiên bản 1.0.0 (BHSTORE)</Text>
 
             </ScrollView>
         </View>
@@ -169,8 +175,6 @@ const styles = StyleSheet.create({
         position: 'absolute', width: 250, height: 250, borderRadius: 125, opacity: 0.2,
         shadowColor: "#fff", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20
     },
-
-    // Header
     header: { flexDirection: 'row', alignItems: 'center', paddingTop: 70, paddingHorizontal: 20, marginBottom: 30 },
     avatarContainer: { position: 'relative' },
     avatar: { width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: '#00ff87' },
@@ -189,16 +193,10 @@ const styles = StyleSheet.create({
     orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     sectionTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
     seeAll: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
-    statusRow: { flexDirection: 'row', justifyContent: 'space-between' },
-    statusItem: { alignItems: 'center', width: '22%' },
+    statusRow: { flexDirection: 'row', justifyContent: 'space-around' },
+    statusItem: { alignItems: 'center', width: '30%' },
     iconBox: { marginBottom: 8, position: 'relative' },
     statusText: { color: 'rgba(255,255,255,0.8)', fontSize: 11, textAlign: 'center' },
-    badge: {
-        position: 'absolute', top: -5, right: -8,
-        backgroundColor: '#ff006e', minWidth: 16, height: 16, borderRadius: 8,
-        justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: '#24243e'
-    },
-    badgeText: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
 
     // Menu List
     menuContainer: { paddingHorizontal: 20 },

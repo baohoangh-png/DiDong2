@@ -74,7 +74,10 @@ export default function DashboardScreen() {
 
   const { items, addToCart } = useCart();
 
-  const categories = ['Dành cho bạn', 'Mới về', 'Trending', 'Giá sốc'];
+  // --- ĐÃ SỬA: CHỈ GIỮ LẠI "DÀNH CHO BẠN" ---
+  const categories = ['Dành cho bạn'];
+  // ------------------------------------------
+
   const CARD_WIDTH = (width - 40 - 15) / 2;
   const BANNER_WIDTH = width - 40;
 
@@ -155,25 +158,18 @@ export default function DashboardScreen() {
     }, 2000);
   };
 
-  // --- LOGIC THÊM NHANH (MỚI: CHECK ĐĂNG NHẬP) ---
   const handleQuickAdd = (item: any) => {
-    // 1. Nếu chưa đăng nhập -> Chặn lại & Hiện Alert
     if (!currentUser) {
       Alert.alert(
         "Yêu cầu đăng nhập",
         "Bạn cần đăng nhập để thêm sản phẩm vào giỏ hàng.",
         [
           { text: "Để sau", style: "cancel" },
-          {
-            text: "Đăng nhập ngay",
-            onPress: () => router.push('/auth') // Chuyển sang trang Login
-          }
+          { text: "Đăng nhập ngay", onPress: () => router.push('/auth') }
         ]
       );
       return;
     }
-
-    // 2. Nếu đã đăng nhập -> Thêm bình thường
     addToCart(item);
     showToast(`Đã thêm "${item.name}" vào giỏ`);
   };
@@ -221,7 +217,6 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </GlassCard>
 
-            {/* CHỈ HIỆN NÚT ĐĂNG NHẬP KHI CHƯA LOGIN (CLEAN UI) */}
             {!currentUser && (
               <TouchableOpacity onPress={() => router.push('/auth')} style={styles.loginBtn}>
                 <Text style={styles.loginText}>Đăng nhập</Text>
@@ -230,7 +225,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* SEARCH BAR (CLEAN) */}
+        {/* SEARCH BAR */}
         <GlassCard style={styles.searchContainer}>
           <Ionicons name="search" size={20} color="rgba(255,255,255,0.6)" />
           <TextInput placeholder="Tìm kiếm balo..." placeholderTextColor="rgba(255,255,255,0.4)" style={styles.searchInput} value={searchQuery} onChangeText={handleSearch} />
@@ -247,6 +242,7 @@ export default function DashboardScreen() {
               {filteredProducts.map((item) => (
                 <GlassCard key={item.id} style={[styles.gridCard, { width: CARD_WIDTH }]}>
                   <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/product/${item.id}` as any)}>
+                    {/* ẢNH ĐƯỢC BO GÓC + NỀN TRẮNG */}
                     <Image source={{ uri: item.image }} style={styles.gridImage} resizeMode="contain" />
                     <View>
                       <TextGradient numberOfLines={1} style={styles.gridName}>{item.name}</TextGradient>
@@ -259,6 +255,7 @@ export default function DashboardScreen() {
           </View>
         ) : (
           <>
+            {/* --- KHU VỰC CATEGORY CHỈ CÒN 1 MỤC --- */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
               {categories.map((cat, index) => (
                 <TouchableOpacity key={index}>
@@ -303,17 +300,17 @@ export default function DashboardScreen() {
                 <GlassCard key={item.id} style={[styles.gridCard, { width: CARD_WIDTH }]}>
                   <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/product/${item.id}` as any)}>
                     <TouchableOpacity style={styles.favoriteBtn}><Ionicons name="heart-outline" size={16} color="#fff" /></TouchableOpacity>
+
+                    {/* ẢNH ĐƯỢC BO GÓC + NỀN TRẮNG */}
                     <Image source={{ uri: item.image }} style={styles.gridImage} resizeMode="contain" />
+
                     <View style={styles.gridInfo}>
                       <TextGradient numberOfLines={1} style={styles.gridName}>{item.name}</TextGradient>
                       <View style={styles.priceRow}>
                         <TextGradient style={styles.gridPrice}>{formatCurrency(item.price)}</TextGradient>
-
-                        {/* NÚT THÊM NHANH (CÓ KIỂM TRA ĐĂNG NHẬP) */}
                         <TouchableOpacity onPress={() => handleQuickAdd(item)}>
                           <Ionicons name="add-circle" size={26} color="#00ff87" />
                         </TouchableOpacity>
-
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -380,7 +377,18 @@ const styles = StyleSheet.create({
   dot: { height: 8, borderRadius: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 15 },
   gridCard: { padding: 12, borderRadius: 20, marginBottom: 5 },
-  gridImage: { width: '100%', height: 100, marginBottom: 10 },
+
+  // --- STYLE SỬA ĐỔI: TẠO KHUNG TRẮNG BO TRÒN ---
+  gridImage: {
+    width: '100%',
+    height: 120, // Tăng chiều cao lên 120 cho thoáng
+    marginBottom: 10,
+    backgroundColor: '#fff', // Nền trắng để che nền ảnh gốc
+    borderRadius: 15, // Bo tròn 4 góc
+    // resizeMode được set inline trong component (vẫn là contain)
+  },
+  // ------------------------------------------------
+
   gridInfo: {},
   gridName: { fontSize: 13, fontWeight: '600', marginBottom: 8 },
   priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

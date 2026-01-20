@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons'; // Thêm FontAwesome cho icon đẹp
+import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -19,7 +19,15 @@ import {
 } from 'react-native';
 
 // --- FIREBASE ---
-import { createUserWithEmailAndPassword as createUser, signOut as firebaseSignOut, signInWithEmailAndPassword as signIn, updateProfile as updateAuthProfile } from 'firebase/auth';
+// Import thêm sendPasswordResetEmail
+import {
+  createUserWithEmailAndPassword as createUser,
+  signOut as firebaseSignOut,
+  sendPasswordResetEmail // <--- MỚI
+  ,
+  signInWithEmailAndPassword as signIn,
+  updateProfile as updateAuthProfile
+} from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../constants/firebaseConfig';
 
@@ -28,8 +36,8 @@ const { width } = Dimensions.get('window');
 export default function AuthScreen() {
   const router = useRouter();
 
-  // State quản lý chế độ
-  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'PHONE'>('LOGIN');
+  // Thêm chế độ 'FORGOT_PASSWORD'
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'PHONE' | 'FORGOT_PASSWORD'>('LOGIN');
 
   // Các trường dữ liệu
   const [fullName, setFullName] = useState('');
@@ -44,10 +52,10 @@ export default function AuthScreen() {
   };
 
   // --- RESET FORM KHI ĐỔI CHẾ ĐỘ ---
-  const switchMode = (mode: 'LOGIN' | 'REGISTER' | 'PHONE') => {
+  const switchMode = (mode: 'LOGIN' | 'REGISTER' | 'PHONE' | 'FORGOT_PASSWORD') => {
     setAuthMode(mode);
     setFullName('');
-    setEmail('');
+    // setEmail(''); // Giữ lại email để tiện thao tác
     setPassword('');
     setPhoneNumber('');
   };
@@ -80,7 +88,7 @@ export default function AuthScreen() {
         createdAt: new Date(),
         role: 'user'
       });
-      await firebaseSignOut(auth); // Đá ra bắt đăng nhập lại
+      await firebaseSignOut(auth);
       Alert.alert("Thành công", "Tài khoản đã tạo. Vui lòng đăng nhập lại.", [{ text: "OK", onPress: () => switchMode('LOGIN') }]);
     } catch (error: any) {
       Alert.alert('Lỗi', error.message);
@@ -91,20 +99,14 @@ export default function AuthScreen() {
 
   // --- 3. XỬ LÝ ĐĂNG KÝ SĐT (RÀNG BUỘC 10 SỐ) ---
   const handlePhoneAuth = () => {
-    // Validate dữ liệu
     if (!fullName) return Alert.alert("Thiếu thông tin", "Vui lòng nhập Họ và tên.");
     if (!phoneNumber) return Alert.alert("Thiếu thông tin", "Vui lòng nhập Số điện thoại.");
-
-    // REGEX: Chỉ cho phép số, độ dài chính xác 10 ký tự
     const phoneRegex = /^[0-9]{10}$/;
-
     if (!phoneRegex.test(phoneNumber)) {
       Alert.alert("Sai định dạng", "Số điện thoại phải bao gồm đúng 10 chữ số (VD: 0912345678).");
       return;
     }
-
     setLoading(true);
-    // Giả lập gửi OTP (Vì Firebase Phone Auth cần cấu hình Native phức tạp)
     setTimeout(() => {
       setLoading(false);
       Alert.alert(
@@ -113,6 +115,24 @@ export default function AuthScreen() {
         [{ text: "Đã hiểu", onPress: () => switchMode('LOGIN') }]
       );
     }, 1500);
+  };
+
+  // --- 4. XỬ LÝ QUÊN MẬT KHẨU (MỚI) ---
+  const handleForgotPassword = async () => {
+    if (!email) return Alert.alert("Thiếu thông tin", "Vui lòng nhập Email để nhận link đặt lại mật khẩu.");
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      Alert.alert(
+        "Đã gửi Email! 📧",
+        "Vui lòng kiểm tra hộp thư (cả mục Spam) để đặt lại mật khẩu.",
+        [{ text: "OK", onPress: () => switchMode('LOGIN') }]
+      );
+    } catch (error: any) {
+      Alert.alert("Lỗi", "Không tìm thấy Email này hoặc lỗi hệ thống.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // --- NÚT SOCIAL (Giả lập) ---
@@ -146,7 +166,12 @@ export default function AuthScreen() {
               {authMode === 'LOGIN' && 'Đăng Nhập'}
               {authMode === 'REGISTER' && 'Tạo Tài Khoản'}
               {authMode === 'PHONE' && 'Đăng Nhập SĐT'}
+              {authMode === 'FORGOT_PASSWORD' && 'Quên Mật Khẩu'}
             </Text>
+
+            {authMode === 'FORGOT_PASSWORD' && (
+              <Text style={styles.subTitle}>Nhập email của bạn để nhận hướng dẫn đặt lại mật khẩu.</Text>
+            )}
 
             {/* --- FORM NHẬP LIỆU --- */}
 
@@ -180,13 +205,13 @@ export default function AuthScreen() {
                 <TextInput
                   placeholder="Số điện thoại (10 số)" placeholderTextColor="rgba(255,255,255,0.4)"
                   style={styles.input} value={phoneNumber} onChangeText={setPhoneNumber}
-                  keyboardType="numeric" maxLength={10} // Giới hạn nhập tối đa 10 ký tự
+                  keyboardType="numeric" maxLength={10}
                 />
               </View>
             )}
 
-            {/* 4. MẬT KHẨU (Ẩn khi dùng SĐT - vì dùng OTP) */}
-            {authMode !== 'PHONE' && (
+            {/* 4. MẬT KHẨU (Ẩn khi dùng SĐT hoặc Quên mật khẩu) */}
+            {(authMode === 'LOGIN' || authMode === 'REGISTER') && (
               <View style={styles.inputContainer}>
                 <Ionicons name="lock-closed-outline" size={20} color="rgba(255,255,255,0.6)" style={styles.icon} />
                 <TextInput
@@ -197,13 +222,21 @@ export default function AuthScreen() {
               </View>
             )}
 
+            {/* LINK QUÊN MẬT KHẨU (Chỉ hiện khi ở màn hình Login) */}
+            {authMode === 'LOGIN' && (
+              <TouchableOpacity style={styles.forgotBtn} onPress={() => switchMode('FORGOT_PASSWORD')}>
+                <Text style={styles.forgotText}>Quên mật khẩu?</Text>
+              </TouchableOpacity>
+            )}
+
             {/* --- NÚT CHÍNH --- */}
             <TouchableOpacity
               style={styles.mainBtn}
               onPress={() => {
                 if (authMode === 'LOGIN') handleLogin();
                 else if (authMode === 'REGISTER') handleRegister();
-                else handlePhoneAuth();
+                else if (authMode === 'PHONE') handlePhoneAuth();
+                else handleForgotPassword();
               }}
               disabled={loading}
             >
@@ -216,13 +249,14 @@ export default function AuthScreen() {
                     {authMode === 'LOGIN' && 'ĐĂNG NHẬP'}
                     {authMode === 'REGISTER' && 'ĐĂNG KÝ NGAY'}
                     {authMode === 'PHONE' && 'GỬI MÃ OTP'}
+                    {authMode === 'FORGOT_PASSWORD' && 'GỬI LINK KHÔI PHỤC'}
                   </Text>
                 )}
               </LinearGradient>
             </TouchableOpacity>
 
             {/* --- CHUYỂN ĐỔI CHẾ ĐỘ --- */}
-            {authMode !== 'PHONE' && (
+            {(authMode === 'LOGIN' || authMode === 'REGISTER') && (
               <TouchableOpacity onPress={() => switchMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} style={styles.switchBtn}>
                 <Text style={styles.switchText}>
                   {authMode === 'LOGIN' ? 'Chưa có tài khoản? ' : 'Đã có tài khoản? '}
@@ -233,10 +267,10 @@ export default function AuthScreen() {
               </TouchableOpacity>
             )}
 
-            {/* Nút quay lại Login nếu đang ở trang Phone */}
-            {authMode === 'PHONE' && (
+            {/* Nút quay lại Login nếu đang ở trang Phone hoặc Forgot Password */}
+            {(authMode === 'PHONE' || authMode === 'FORGOT_PASSWORD') && (
               <TouchableOpacity onPress={() => switchMode('LOGIN')} style={styles.switchBtn}>
-                <Text style={{ color: '#fff', textDecorationLine: 'underline' }}>Quay lại đăng nhập Email</Text>
+                <Text style={{ color: '#fff', textDecorationLine: 'underline' }}>Quay lại đăng nhập</Text>
               </TouchableOpacity>
             )}
 
@@ -281,11 +315,15 @@ const styles = StyleSheet.create({
   logoText: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: 2 },
 
   formCard: { width: '100%', padding: 25, borderRadius: 30, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 20, textAlign: 'center' },
+  title: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 10, textAlign: 'center' },
+  subTitle: { fontSize: 14, color: 'rgba(255,255,255,0.7)', textAlign: 'center', marginBottom: 20 },
 
   inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 15, marginBottom: 15, paddingHorizontal: 15, height: 50, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   icon: { marginRight: 10 },
   input: { flex: 1, color: '#fff' },
+
+  forgotBtn: { alignSelf: 'flex-end', marginBottom: 20 },
+  forgotText: { color: '#00ff87', fontSize: 12, fontWeight: 'bold' },
 
   mainBtn: { borderRadius: 15, marginTop: 5, overflow: 'hidden', shadowColor: "#00ff87", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.3, shadowRadius: 10 },
   btnGradient: { paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
