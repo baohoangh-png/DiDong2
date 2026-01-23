@@ -19,12 +19,9 @@ import {
 } from 'react-native';
 
 // --- FIREBASE ---
-// Import thêm sendPasswordResetEmail
 import {
   createUserWithEmailAndPassword as createUser,
-  signOut as firebaseSignOut,
-  sendPasswordResetEmail // <--- MỚI
-  ,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword as signIn,
   updateProfile as updateAuthProfile
 } from 'firebase/auth';
@@ -36,7 +33,7 @@ const { width } = Dimensions.get('window');
 export default function AuthScreen() {
   const router = useRouter();
 
-  // Thêm chế độ 'FORGOT_PASSWORD'
+  // Chế độ: Đăng nhập, Đăng ký, SĐT, Quên mật khẩu
   const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'PHONE' | 'FORGOT_PASSWORD'>('LOGIN');
 
   // Các trường dữ liệu
@@ -45,6 +42,28 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // --- HÀM DỊCH LỖI FIREBASE SANG TIẾNG VIỆT ---
+  const getFirebaseErrorMessage = (error: any) => {
+    const errorCode = error.code;
+    switch (errorCode) {
+      case 'auth/email-already-in-use':
+        return 'Email này đã được sử dụng rồi! Vui lòng dùng email khác hoặc đăng nhập.';
+      case 'auth/invalid-email':
+        return 'Địa chỉ email không hợp lệ. Vui lòng kiểm tra lại.';
+      case 'auth/user-not-found':
+      case 'auth/invalid-credential':
+        return 'Tài khoản không tồn tại hoặc sai thông tin.';
+      case 'auth/wrong-password':
+        return 'Mật khẩu không chính xác.';
+      case 'auth/weak-password':
+        return 'Mật khẩu quá yếu (cần tối thiểu 6 ký tự).';
+      case 'auth/too-many-requests':
+        return 'Bạn đã thử quá nhiều lần. Vui lòng đợi một lát rồi thử lại.';
+      default:
+        return 'Đã có lỗi xảy ra (' + errorCode + '). Vui lòng thử lại.';
+    }
+  };
 
   // --- QUAY VỀ TRANG CHỦ ---
   const handleGoHome = () => {
@@ -55,20 +74,20 @@ export default function AuthScreen() {
   const switchMode = (mode: 'LOGIN' | 'REGISTER' | 'PHONE' | 'FORGOT_PASSWORD') => {
     setAuthMode(mode);
     setFullName('');
-    // setEmail(''); // Giữ lại email để tiện thao tác
     setPassword('');
     setPhoneNumber('');
+    // Không reset email để tiện cho người dùng nếu họ lỡ chuyển tab
   };
 
   // --- 1. XỬ LÝ ĐĂNG NHẬP EMAIL ---
   const handleLogin = async () => {
-    if (!email || !password) return Alert.alert('Lỗi', 'Vui lòng nhập Email và Mật khẩu');
+    if (!email || !password) return Alert.alert('Thiếu thông tin', 'Vui lòng nhập Email và Mật khẩu');
     setLoading(true);
     try {
       await signIn(auth, email, password);
       router.replace('/(tabs)');
     } catch (error: any) {
-      Alert.alert('Đăng nhập thất bại', "Email hoặc mật khẩu không đúng.");
+      Alert.alert('Đăng nhập thất bại', getFirebaseErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -76,48 +95,61 @@ export default function AuthScreen() {
 
   // --- 2. XỬ LÝ ĐĂNG KÝ EMAIL ---
   const handleRegister = async () => {
-    if (!email || !password || !fullName) return Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin');
+    if (!email || !password || !fullName) return Alert.alert('Thiếu thông tin', 'Vui lòng nhập đầy đủ thông tin');
     setLoading(true);
     try {
       const userCredential = await createUser(auth, email, password);
       const user = userCredential.user;
+
+      // Cập nhật tên hiển thị
       await updateAuthProfile(user, { displayName: fullName });
+
+      // Lưu vào Firestore
       await setDoc(doc(db, "users", user.uid), {
         email: user.email,
         fullName: fullName,
         createdAt: new Date(),
         role: 'user'
       });
-      await firebaseSignOut(auth);
-      Alert.alert("Thành công", "Tài khoản đã tạo. Vui lòng đăng nhập lại.", [{ text: "OK", onPress: () => switchMode('LOGIN') }]);
+
+      // (Tùy chọn) Đăng xuất ngay sau khi đăng ký để bắt người dùng đăng nhập lại
+      // await firebaseSignOut(auth); 
+      // Alert.alert("Thành công", "Tài khoản đã tạo. Vui lòng đăng nhập lại.", [{ text: "OK", onPress: () => switchMode('LOGIN') }]);
+
+      // HOẶC: Cho vào luôn
+      Alert.alert("Thành công", "Tài khoản đã tạo! Chào mừng bạn.");
+      router.replace('/(tabs)');
+
     } catch (error: any) {
-      Alert.alert('Lỗi', error.message);
+      Alert.alert('Đăng ký thất bại', getFirebaseErrorMessage(error));
     } finally {
       setLoading(false);
     }
   };
 
-  // --- 3. XỬ LÝ ĐĂNG KÝ SĐT (RÀNG BUỘC 10 SỐ) ---
+  // --- 3. XỬ LÝ ĐĂNG KÝ SĐT (DEMO) ---
   const handlePhoneAuth = () => {
     if (!fullName) return Alert.alert("Thiếu thông tin", "Vui lòng nhập Họ và tên.");
     if (!phoneNumber) return Alert.alert("Thiếu thông tin", "Vui lòng nhập Số điện thoại.");
+
     const phoneRegex = /^[0-9]{10}$/;
     if (!phoneRegex.test(phoneNumber)) {
       Alert.alert("Sai định dạng", "Số điện thoại phải bao gồm đúng 10 chữ số (VD: 0912345678).");
       return;
     }
+
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
       Alert.alert(
-        "Mã OTP đã gửi!",
-        `Mã xác thực đã được gửi đến số ${phoneNumber}. (Đây là bản Demo, vui lòng dùng Email để đăng nhập thật).`,
+        "Tính năng Demo",
+        `Hệ thống OTP đang bảo trì. Vui lòng sử dụng Email để đăng nhập thật.`,
         [{ text: "Đã hiểu", onPress: () => switchMode('LOGIN') }]
       );
     }, 1500);
   };
 
-  // --- 4. XỬ LÝ QUÊN MẬT KHẨU (MỚI) ---
+  // --- 4. XỬ LÝ QUÊN MẬT KHẨU ---
   const handleForgotPassword = async () => {
     if (!email) return Alert.alert("Thiếu thông tin", "Vui lòng nhập Email để nhận link đặt lại mật khẩu.");
     setLoading(true);
@@ -129,7 +161,7 @@ export default function AuthScreen() {
         [{ text: "OK", onPress: () => switchMode('LOGIN') }]
       );
     } catch (error: any) {
-      Alert.alert("Lỗi", "Không tìm thấy Email này hoặc lỗi hệ thống.");
+      Alert.alert("Lỗi", getFirebaseErrorMessage(error));
     } finally {
       setLoading(false);
     }

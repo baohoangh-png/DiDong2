@@ -63,8 +63,10 @@ export default function DashboardScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // --- ANIMATED VALUES ---
+  // --- ANIMATED VALUES & AUTO SCROLL ---
   const scrollX = useRef(new Animated.Value(0)).current;
+  const bannerRef = useRef<ScrollView>(null); // Ref để điều khiển ScrollView
+  const [bannerIndex, setBannerIndex] = useState(0); // Theo dõi trang hiện tại
 
   // --- TOAST STATE ---
   const [toastVisible, setToastVisible] = useState(false);
@@ -74,12 +76,48 @@ export default function DashboardScreen() {
 
   const { items, addToCart } = useCart();
 
-  // --- ĐÃ SỬA: CHỈ GIỮ LẠI "DÀNH CHO BẠN" ---
   const categories = ['Dành cho bạn'];
-  // ------------------------------------------
-
   const CARD_WIDTH = (width - 40 - 15) / 2;
   const BANNER_WIDTH = width - 40;
+  const BANNER_SPACING = 20;
+  const SNAP_INTERVAL = BANNER_WIDTH + BANNER_SPACING; // Khoảng cách mỗi lần cuộn (chiều rộng banner + margin phải)
+
+  // --- LOGIC AUTO PLAY ---
+  useEffect(() => {
+    const interval = setInterval(() => {
+      let nextIndex = bannerIndex + 1;
+      if (nextIndex >= BANNERS.length) {
+        nextIndex = 0; // Quay về đầu nếu hết danh sách
+      }
+
+      // Cuộn tới vị trí tiếp theo
+      if (bannerRef.current) {
+        bannerRef.current.scrollTo({
+          x: nextIndex * (width - 40 + 20) - 0, // Tính toán tọa độ x: index * (width - 40 + margin 20)
+          animated: true
+        });
+      }
+      setBannerIndex(nextIndex);
+    }, 3000); // 3000ms = 3 giây
+
+    return () => clearInterval(interval); // Dọn dẹp khi thoát màn hình
+  }, [bannerIndex, width]);
+
+  // Listener để cập nhật index khi người dùng tự lướt tay
+  const handleScroll = Animated.event(
+    [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+    {
+      useNativeDriver: false,
+      listener: (event: any) => {
+        const offsetX = event.nativeEvent.contentOffset.x;
+        const index = Math.round(offsetX / (width - 40 + 20));
+        // Chỉ cập nhật nếu khác index hiện tại để tránh render nhiều
+        if (index !== bannerIndex) {
+          // setBannerIndex(index); // (Tạm tắt dòng này để tránh xung đột với AutoPlay, hoặc bật nếu muốn đồng bộ hoàn hảo)
+        }
+      }
+    }
+  );
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -255,7 +293,7 @@ export default function DashboardScreen() {
           </View>
         ) : (
           <>
-            {/* --- KHU VỰC CATEGORY CHỈ CÒN 1 MỤC --- */}
+            {/* --- CATEGORY CHỈ CÒN 1 MỤC --- */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
               {categories.map((cat, index) => (
                 <TouchableOpacity key={index}>
@@ -266,12 +304,19 @@ export default function DashboardScreen() {
               ))}
             </ScrollView>
 
+            {/* --- TIN NỔI BẬT (BANNER AUTO SCROLL) --- */}
             <View style={{ marginBottom: 25 }}>
               <TextGradient style={[styles.sectionTitle, { marginBottom: 15 }]}>Tin Nổi Bật</TextGradient>
+
+              {/* Thêm ref={bannerRef} và sự kiện onScroll */}
               <Animated.ScrollView
-                horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-                style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20 }}
-                onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: false })}
+                ref={bannerRef as any}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                style={{ marginHorizontal: -20 }}
+                contentContainerStyle={{ paddingHorizontal: 20 }}
+                onScroll={handleScroll}
                 scrollEventThrottle={16}
               >
                 {BANNERS.map((banner) => (
